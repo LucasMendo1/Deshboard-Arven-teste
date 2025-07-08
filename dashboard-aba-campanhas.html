@@ -1,0 +1,161 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard Campanhas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #111;
+      color: #fff;
+      padding: 20px;
+    }
+    select, input[type="file"] {
+      margin: 5px 10px 15px 0;
+      padding: 8px;
+    }
+    canvas {
+      background: #222;
+      margin: 20px 0;
+      padding: 10px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>📈 Campanhas</h2>
+  <input type="file" id="inputExcel" accept=".xlsx" />
+  <select id="campanhaFiltroMes" onchange="renderCampanhas()">
+    <option value="">Todos os meses</option>
+  </select>
+  <select id="campanhaFiltroNome" onchange="renderCampanhas()">
+    <option value="">Todas campanhas</option>
+  </select>
+
+  <canvas id="campanhaLeadsChart" height="100"></canvas>
+  <canvas id="campanhaRoasChart" height="100"></canvas>
+  <canvas id="campanhaRadarChart" height="120"></canvas>
+  <canvas id="campanhaDonutChart" height="100"></canvas>
+  <canvas id="campanhaFunnelChart" height="100"></canvas>
+
+  <script>
+    let json = [];
+
+    document.getElementById("inputExcel").addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        json = XLSX.utils.sheet_to_json(sheet);
+        preencherFiltros();
+        renderCampanhas();
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function preencherFiltros() {
+      const meses = [...new Set(json.map(r => r["Mês"]).filter(Boolean))];
+      const campanhas = [...new Set(json.map(r => r["Campanha"]).filter(Boolean))];
+      const mesSel = document.getElementById("campanhaFiltroMes");
+      const campSel = document.getElementById("campanhaFiltroNome");
+      meses.forEach(m => mesSel.innerHTML += `<option value="${m}">${m}</option>`);
+      campanhas.forEach(c => campSel.innerHTML += `<option value="${c}">${c}</option>`);
+    }
+
+    function renderCampanhas() {
+      const mes = document.getElementById("campanhaFiltroMes").value;
+      const campanha = document.getElementById("campanhaFiltroNome").value;
+      const dados = json.filter(r =>
+        (!mes || r["Mês"] === mes) &&
+        (!campanha || r["Campanha"] === campanha)
+      );
+
+      const campanhas = [...new Set(dados.map(r => r["Campanha"]))];
+      const sum = (campo) => campanhas.map(c =>
+        dados.filter(r => r["Campanha"] === c).reduce((acc, r) => acc + (parseFloat(r[campo]) || 0), 0)
+      );
+
+      const leads = sum("Leads totais");
+      const roas = sum("ROAS");
+      const mqls = sum("MQLs Totais");
+      const vendas = sum("Vendas efetuadas");
+      const invest = sum("Investimento em ADS");
+
+      renderChart("campanhaLeadsChart", "bar", campanhas, leads, "Leads", "#4ade80");
+      renderChart("campanhaRoasChart", "line", campanhas, roas, "ROAS", "#38bdf8");
+      renderRadar("campanhaRadarChart", campanhas, leads, mqls, vendas);
+      renderChart("campanhaDonutChart", "doughnut", campanhas, invest, "Investimento", "#fbbf24");
+      renderFunnel("campanhaFunnelChart", campanhas, leads, mqls, vendas);
+    }
+
+    function renderChart(id, type, labels, data, label, color) {
+      const ctx = document.getElementById(id);
+      if (ctx.chart) ctx.chart.destroy();
+      ctx.chart = new Chart(ctx, {
+        type,
+        data: {
+          labels,
+          datasets: [{ label, data, backgroundColor: color, borderColor: color, fill: true }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { labels: { color: '#fff' } } },
+          scales: {
+            x: { ticks: { color: '#fff' } },
+            y: { ticks: { color: '#fff' } }
+          }
+        }
+      });
+    }
+
+    function renderRadar(id, labels, leads, mqls, vendas) {
+      const ctx = document.getElementById(id);
+      if (ctx.chart) ctx.chart.destroy();
+      ctx.chart = new Chart(ctx, {
+        type: "radar",
+        data: {
+          labels: ["Leads", "MQLs", "Vendas"],
+          datasets: labels.map((c, i) => ({
+            label: c,
+            data: [leads[i], mqls[i], vendas[i]],
+            backgroundColor: `hsla(${i*50},70%,60%,0.2)`,
+            borderColor: `hsla(${i*50},80%,50%,1)`
+          }))
+        },
+        options: {
+          scales: { r: { pointLabels: { color: "#fff" }, ticks: { color: "#fff" } } },
+          plugins: { legend: { labels: { color: "#fff" } } }
+        }
+      });
+    }
+
+    function renderFunnel(id, labels, leads, mqls, vendas) {
+      const ctx = document.getElementById(id);
+      if (ctx.chart) ctx.chart.destroy();
+      ctx.chart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: ["Leads", "MQLs", "Vendas"],
+          datasets: labels.map((c, i) => ({
+            label: c,
+            data: [leads[i], mqls[i], vendas[i]],
+            backgroundColor: `hsl(${i*45}, 70%, 60%)`
+          }))
+        },
+        options: {
+          indexAxis: "y",
+          plugins: { legend: { labels: { color: "#fff" } } },
+          scales: { x: { ticks: { color: "#fff" } }, y: { ticks: { color: "#fff" } } }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
